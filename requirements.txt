@@ -1,0 +1,84 @@
+# SHEC AI 健康预测系统 - 统一依赖管理
+# =======================================================
+# 
+# 这是统一的依赖文件，包含了项目所需的所有依赖
+# 具体依赖文件组织在 requirements/ 目录下：
+# - requirements/requirements-base.txt    # 基础Web框架依赖
+# - requirements/requirements-ml.txt      # 机器学习和AI依赖  
+# - requirements/requirements-web.txt     # Web开发相关依赖
+#
+# 安装命令:
+# pip install -r requirements.txt
+# =======================================================
+
+# 引入分类依赖文件
+-r requirements/requirements-base.txt
+-r requirements/requirements-ml.txt 
+-r requirements/requirements-web.txt
+
+# 核心Web框架
+Flask>=3.0.0
+Flask-CORS>=4.0.0
+gunicorn>=21.2.0
+gevent>=23.7.0
+
+# 系统监控
+psutil>=5.9.5
+
+# 数据验证
+marshmallow>=3.20.0
+marshmallow-sqlalchemy
+
+# PyTorch核心 - GPU版本支持CUDA
+torch>=2.1.0
+torchvision>=0.16.0
+torchaudio>=2.1.0
+--extra-index-url https://download.pytorch.org/whl/cu121
+pytorch-lightning
+
+# 数据处理核心
+numpy>=1.24.3
+pandas>=2.0.3
+scikit-learn>=1.3.0
+scipy
+
+# 数据可视化
+matplotlib
+seaborn
+
+# 机器学习相关
+statsmodels
+lightgbm
+xgboost>=2.0.0
+
+# 数据库连接
+mysql-connector-python>=8.1.0
+
+# 缓存
+redis>=4.6.0
+
+# 配置管理
+python-dotenv>=1.0.0
+
+# 日志和监控
+loguru>=0.7.0
+tensorboard>=2.15.1
+wandb>=0.16.0
+
+# 基础工具
+requests>=2.31.0
+python-dateutil>=2.8.2
+ujson>=5.8.0
+
+# 部署
+gunicorn>=21.2.0
+
+# 开发测试
+pytest>=7.4.0
+black
+isort
+flake8
+
+# Jupyter支持
+jupyter
+ipython

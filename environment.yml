@@ -1,0 +1,48 @@
+name: shec_ai_env
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+  - defaults
+
+dependencies:
+  - python=3.11
+  
+  # PyTorch ecosystem
+  - pytorch>=2.1.0
+  - torchvision>=0.16.0
+  - torchaudio>=2.1.0
+  - pytorch-cuda=12.1
+  - pytorch-lightning
+  
+  # 数据科学核心包
+  - pandas
+  - numpy
+  - scikit-learn
+  - scipy
+  - matplotlib
+  - seaborn
+  - jupyter
+  - ipython
+  
+  # 机器学习相关
+  - statsmodels
+  - lightgbm
+  
+  # 开发工具
+  - black
+  - isort
+  - pytest
+  - flake8
+  
+  # pip安装的包
+  - pip
+  - pip:
+    - flask>=3.0.0
+    - flask-cors>=4.0.0
+    - python-dateutil>=2.8.2
+    - requests>=2.31.0
+    - ujson>=5.8.0
+    - tensorboard>=2.15.1
+    - wandb>=0.16.0
+    - xgboost>=2.0.0

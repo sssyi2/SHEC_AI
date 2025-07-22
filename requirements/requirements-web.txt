@@ -1,0 +1,21 @@
+# Web 框架
+Flask>=3.0.0
+Flask-CORS>=4.0.0
+
+# WSGI 服务器
+gunicorn>=21.0.0
+
+# 数据库连接
+mysql-connector-python>=8.1.0
+SQLAlchemy>=2.0.0
+
+# 缓存
+redis>=3.5.3
+
+# API 相关
+marshmallow>=3.20.0
+Flask-RESTful>=0.3.10
+
+# 工具包
+python-dotenv>=1.0.0
+click>=8.1.0

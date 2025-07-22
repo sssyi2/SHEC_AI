@@ -1,0 +1,12 @@
+# 机器学习核心包
+scikit-learn>=1.3.0
+lightgbm>=4.0.0
+xgboost>=1.7.0
+
+# 深度学习相关（不包含 PyTorch，单独安装）
+tensorboard>=2.13.0
+# pytorch-lightning>=2.0.0  # 注释掉，减少构建时间
+
+# 特征工程和数据处理
+imbalanced-learn>=0.11.0
+category_encoders>=2.6.0

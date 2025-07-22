@@ -1,0 +1,94 @@
+version: '3.8'
+
+# 简化版 - 只包含核心服务，用于快速测试
+services:
+  # MySQL数据库服务
+  mysql:
+    image: mysql:8.0
+    container_name: shec_mysql_dev
+    environment:
+      MYSQL_ROOT_PASSWORD: shec_password
+      MYSQL_DATABASE: shec_psims
+      MYSQL_USER: shec_user
+      MYSQL_PASSWORD: shec_password
+      MYSQL_CHARSET: utf8mb4
+      MYSQL_COLLATION: utf8mb4_unicode_ci
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_dev_data:/var/lib/mysql
+      - ./db_scripts:/docker-entrypoint-initdb.d
+    networks:
+      - shec_dev_network
+    restart: unless-stopped
+    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-pshec_password"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Redis缓存服务
+  redis:
+    image: redis:7-alpine
+    container_name: shec_redis_dev
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_dev_data:/data
+    networks:
+      - shec_dev_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Flask AI应用服务
+  shec_ai:
+    build:
+      context: .
+      dockerfile: Dockerfile.optimized
+    container_name: shec_ai_dev
+    environment:
+      - FLASK_ENV=docker
+      - RUNNING_IN_DOCKER=true
+      - PYTHONPATH=/app
+      - DB_HOST=mysql
+      - DB_PORT=3306
+      - DB_NAME=shec_psims
+      - DB_USER=shec_user
+      - DB_PASSWORD=shec_password
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - JWT_SECRET_KEY=dev-secret-key-change-in-production
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./models:/app/models
+      - ./logs:/app/logs
+      - ./data:/app/data
+    networks:
+      - shec_dev_network
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  mysql_dev_data:
+    driver: local
+  redis_dev_data:
+    driver: local
+
+networks:
+  shec_dev_network:
+    driver: bridge

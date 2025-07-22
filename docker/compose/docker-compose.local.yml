@@ -1,0 +1,62 @@
+version: '3.8'
+
+# 混合模式 - 本地数据库 + Docker应用
+services:
+  # Redis缓存服务（保留Docker）
+  redis:
+    image: redis:7-alpine
+    container_name: shec_redis_local
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_local_data:/data
+    networks:
+      - shec_local_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Flask AI应用服务（连接本地MySQL）
+  shec_ai:
+    build:
+      context: .
+      dockerfile: Dockerfile.optimized
+    container_name: shec_ai_local
+    environment:
+      - FLASK_ENV=development
+      - PYTHONPATH=/app
+      - DB_HOST=host.docker.internal  # 连接宿主机MySQL
+      - DB_PORT=3306
+      - DB_NAME=shec_psims
+      - DB_USER=root
+      - DB_PASSWORD=123456
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - JWT_SECRET_KEY=local-dev-secret-key
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./models:/app/models
+      - ./logs:/app/logs
+      - ./data:/app/data
+    networks:
+      - shec_local_network
+    depends_on:
+      - redis
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  redis_local_data:
+    driver: local
+
+networks:
+  shec_local_network:
+    driver: bridge

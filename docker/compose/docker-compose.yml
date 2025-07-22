@@ -1,0 +1,223 @@
+version: '3.8'
+
+services:
+  # MySQL数据库服务
+  mysql:
+    image: mysql:8.0
+    container_name: shec_mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: shec_password
+      MYSQL_DATABASE: shec_psims
+      MYSQL_USER: shec_user
+      MYSQL_PASSWORD: shec_password
+      MYSQL_CHARSET: utf8mb4
+      MYSQL_COLLATION: utf8mb4_unicode_ci
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./db_scripts:/docker-entrypoint-initdb.d
+    networks:
+      - shec_network
+    restart: unless-stopped
+    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-pshec_password"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Redis缓存服务
+  redis:
+    image: redis:7-alpine
+    container_name: shec_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+      - ./config/redis.conf:/usr/local/etc/redis/redis.conf
+    networks:
+      - shec_network
+    restart: unless-stopped
+    command: redis-server /usr/local/etc/redis/redis.conf
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Flask AI应用服务
+  shec_ai:
+    build:
+      context: .
+      dockerfile: Dockerfile.optimized
+      args:
+        BUILDKIT_INLINE_CACHE: 1
+    container_name: shec_ai_app
+    environment:
+      - FLASK_ENV=docker
+      - RUNNING_IN_DOCKER=true
+      - PYTHONPATH=/app
+      - DB_HOST=mysql
+      - DB_PORT=3306
+      - DB_NAME=shec_psims
+      - DB_USER=shec_user
+      - DB_PASSWORD=shec_password
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - JWT_SECRET_KEY=your-super-secret-jwt-key-change-in-production
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./models:/app/models
+      - ./logs:/app/logs
+      - ./data:/app/data
+    networks:
+      - shec_network
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  # Nginx反向代理服务
+  nginx:
+    image: nginx:alpine
+    container_name: shec_nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./config/nginx.conf:/etc/nginx/nginx.conf
+      - ./config/ssl:/etc/nginx/ssl
+      - ./static:/var/www/static
+    networks:
+      - shec_network
+    depends_on:
+      - shec_ai
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # 监控服务 - Prometheus
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: shec_prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    networks:
+      - shec_network
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+
+  # 监控服务 - Grafana
+  grafana:
+    image: grafana/grafana:latest
+    container_name: shec_grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin123
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./config/grafana:/etc/grafana/provisioning
+    networks:
+      - shec_network
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+  # 日志聚合服务 - ELK Stack (可选)
+  elasticsearch:
+    image: elasticsearch:8.8.0
+    container_name: shec_elasticsearch
+    environment:
+      - discovery.type=single-node
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+      - xpack.security.enabled=false
+    ports:
+      - "9200:9200"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    networks:
+      - shec_network
+    restart: unless-stopped
+    profiles:
+      - monitoring
+
+  logstash:
+    image: logstash:8.8.0
+    container_name: shec_logstash
+    volumes:
+      - ./config/logstash.conf:/usr/share/logstash/pipeline/logstash.conf
+    networks:
+      - shec_network
+    depends_on:
+      - elasticsearch
+    restart: unless-stopped
+    profiles:
+      - monitoring
+
+  kibana:
+    image: kibana:8.8.0
+    container_name: shec_kibana
+    ports:
+      - "5601:5601"
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    networks:
+      - shec_network
+    depends_on:
+      - elasticsearch
+    restart: unless-stopped
+    profiles:
+      - monitoring
+
+# 数据卷定义
+volumes:
+  mysql_data:
+    driver: local
+  redis_data:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
+  elasticsearch_data:
+    driver: local
+
+# 网络定义
+networks:
+  shec_network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

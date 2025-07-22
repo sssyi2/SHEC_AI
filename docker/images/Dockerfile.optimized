@@ -1,0 +1,72 @@
+# 使用官方 Python 3.11 精简镜像作为基础镜像
+FROM python:3.11-slim as base
+
+# 设置工作目录
+WORKDIR /app
+
+# 设置环境变量
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app \
+    FLASK_APP=app.py \
+    FLASK_ENV=docker
+
+# 安装系统依赖（这些很少变化，会被缓存）
+RUN apt-get update && apt-get install -y \
+    gcc \
+    g++ \
+    curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+# 升级 pip 并配置镜像源（缓存层）
+RUN pip install --upgrade pip -i https://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com
+
+# 依赖安装阶段
+FROM base as deps
+
+# 1. 先安装基础科学计算包（这些变化最少）
+COPY requirements-base.txt .
+RUN pip install --no-cache-dir -i https://mirrors.aliyun.com/pypi/simple/ \
+    --trusted-host mirrors.aliyun.com --timeout 1000 --retries 3 \
+    -r requirements-base.txt
+
+# 2. 安装 Web 框架相关包
+COPY requirements-web.txt .
+RUN pip install --no-cache-dir -i https://mirrors.aliyun.com/pypi/simple/ \
+    --trusted-host mirrors.aliyun.com --timeout 1000 --retries 3 \
+    -r requirements-web.txt
+
+# 3. 安装机器学习包
+COPY requirements-ml.txt .
+RUN pip install --no-cache-dir -i https://mirrors.aliyun.com/pypi/simple/ \
+    --trusted-host mirrors.aliyun.com --timeout 1000 --retries 3 \
+    -r requirements-ml.txt
+
+# 4. 单独安装 PyTorch CPU 版本（加速下载）
+RUN pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+
+# 最终阶段 - 复制应用代码
+FROM deps as final
+
+# 复制应用代码（放在最后，充分利用缓存）
+COPY app.py .
+COPY config/ ./config/
+COPY utils/ ./utils/
+COPY api/ ./api/
+
+# 创建必要的目录
+RUN mkdir -p logs data models/saved_models
+
+# 设置权限
+RUN chmod +x app.py
+
+# 健康检查
+HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:5000/api/health || exit 1
+
+# 暴露端口
+EXPOSE 5000
+
+# 启动命令
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "4", "--timeout", "120", "app:create_app()"]
