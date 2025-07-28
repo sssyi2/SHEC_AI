@@ -95,17 +95,20 @@ def init_redis(app=None):
     
     try:
         if app and hasattr(app, 'config'):
-            # Flask应用配置
+            # Flask应用配置 - 压力测试优化
             redis_config = {
                 'host': app.config.get('REDIS_HOST', 'localhost'),
                 'port': app.config.get('REDIS_PORT', 6379),
                 'db': app.config.get('REDIS_DB', 0),
                 'password': app.config.get('REDIS_PASSWORD'),
                 'decode_responses': True,
-                'socket_connect_timeout': 5,
-                'socket_timeout': 5,
+                'socket_connect_timeout': 10,    # 增加连接超时
+                'socket_timeout': 10,            # 增加操作超时
                 'retry_on_timeout': True,
-                'max_connections': 50
+                'max_connections': 100,          # 增加最大连接数
+                'socket_keepalive': True,        # 启用keepalive
+                'socket_keepalive_options': {},
+                'health_check_interval': 30      # 健康检查间隔
             }
             
             # 创建连接池

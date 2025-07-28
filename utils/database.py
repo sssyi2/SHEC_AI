@@ -31,11 +31,12 @@ def init_database(app):
             'sql_mode': 'STRICT_TRANS_TABLES',
         }
         
-        # 创建连接池
+        # 创建连接池 - 压力测试优化配置
         connection_pool = pooling.MySQLConnectionPool(
             pool_name="shec_ai_pool",
-            pool_size=10,
-            pool_reset_session=True,
+            pool_size=20,              # 增加连接池大小
+            pool_reset_session=False,  # 减少重置开销
+            connection_timeout=10,     # 连接超时
             **db_config
         )
         

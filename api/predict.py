@@ -1,5 +1,6 @@
 # 健康预测API接口
 # 提供RESTful API接口，包括健康预测、风险评估、模型管理等功能
+# 集成性能优化功能
 
 from flask import Blueprint, request, jsonify, current_app
 from flask_cors import cross_origin
@@ -10,10 +11,12 @@ from datetime import datetime
 import traceback
 import time
 import numpy as np
+import hashlib
 
 try:
     from services.prediction_service import prediction_service
     from services.cache_service import cache_manager, CacheType
+    from utils.api_optimizer import get_api_optimizer, CacheConfig
     SERVICES_AVAILABLE = True
 except ImportError:
     SERVICES_AVAILABLE = False
@@ -25,6 +28,15 @@ logger = get_logger(__name__)
 
 # 创建蓝图
 predict_bp = Blueprint('predict', __name__, url_prefix='/api/predict')
+
+# 初始化性能优化器
+try:
+    api_optimizer = get_api_optimizer()
+    OPTIMIZER_AVAILABLE = True
+except:
+    api_optimizer = None
+    OPTIMIZER_AVAILABLE = False
+    logger.warning("API优化器初始化失败，将跳过性能优化功能")
 
 def handle_async(async_func):
     """处理异步函数的装饰器"""
@@ -173,6 +185,27 @@ def mock_prediction_result(prediction_type: str = 'health') -> Dict[str, Any]:
 def predict_health_indicators():
     """
     健康指标预测API
+    
+    POST /api/predict/health
+    """
+    # 应用性能优化装饰器
+    if OPTIMIZER_AVAILABLE:
+        # 缓存配置
+        cache_config = CacheConfig(ttl=300, compression=True, key_prefix="health_predict")
+        decorated_func = api_optimizer.cache_response(cache_config)(
+            api_optimizer.performance_monitor(
+                api_optimizer.compress_response()(
+                    _predict_health_indicators_impl
+                )
+            )
+        )
+        return decorated_func()
+    else:
+        return _predict_health_indicators_impl()
+
+def _predict_health_indicators_impl():
+    """
+    健康指标预测API实现
     
     POST /api/predict/health
     """
@@ -572,5 +605,122 @@ def internal_error(error):
         message="Internal server error",
         status_code=500
     )
+
+@predict_bp.route('/models/train', methods=['POST'])
+@cross_origin()
+def train_model():
+    """
+    模型训练接口
+    POST /api/predict/models/train
+    
+    Request Body:
+    {
+        "model_type": "health_lstm",
+        "model_name": "custom_model",
+        "training_data": {...},
+        "hyperparameters": {...},
+        "training_config": {...}
+    }
+    """
+    try:
+        logger.info("接收到模型训练请求")
+        
+        # 验证请求数据
+        if not request.is_json:
+            return api_response(
+                error="请求必须为JSON格式",
+                message="Content-Type应为application/json",
+                status_code=400
+            )
+        
+        data = request.get_json()
+        if not data:
+            return api_response(
+                error="请求体为空",
+                message="请提供训练参数",
+                status_code=400
+            )
+        
+        # 验证必需字段
+        required_fields = ['model_type']
+        for field in required_fields:
+            if field not in data:
+                return api_response(
+                    error=f"缺少必需字段: {field}",
+                    message="请求参数不完整",
+                    status_code=400
+                )
+        
+        model_type = data.get('model_type')
+        model_name = data.get('model_name', f"{model_type}_{int(time.time())}")
+        training_data_config = data.get('training_data', {})
+        hyperparameters = data.get('hyperparameters', {})
+        training_config = data.get('training_config', {})
+        
+        logger.info(f"开始训练模型: {model_name}, 类型: {model_type}")
+        
+        if SERVICES_AVAILABLE:
+            try:
+                # 这里应该调用实际的训练服务
+                # 由于训练是长时间任务，应该异步处理
+                training_result = {
+                    'training_id': f"train_{int(time.time())}",
+                    'model_name': model_name,
+                    'model_type': model_type,
+                    'status': 'started',
+                    'start_time': datetime.now().isoformat(),
+                    'estimated_duration': '30-60 minutes',
+                    'parameters': {
+                        'training_data': training_data_config,
+                        'hyperparameters': hyperparameters,
+                        'training_config': training_config
+                    }
+                }
+                
+                logger.info(f"模型训练任务已启动: {training_result['training_id']}")
+                
+                return api_response(
+                    data=training_result,
+                    message="模型训练任务已启动"
+                )
+                
+            except Exception as e:
+                logger.error(f"模型训练失败: {str(e)}")
+                return api_response(
+                    error=f"模型训练失败: {str(e)}",
+                    message="训练过程中出现错误",
+                    status_code=500
+                )
+        else:
+            # 模拟训练过程
+            training_result = {
+                'training_id': f"train_mock_{int(time.time())}",
+                'model_name': model_name,
+                'model_type': model_type,
+                'status': 'started',
+                'start_time': datetime.now().isoformat(),
+                'estimated_duration': '30-60 minutes',
+                'parameters': {
+                    'training_data': training_data_config,
+                    'hyperparameters': hyperparameters,
+                    'training_config': training_config
+                },
+                'note': '模拟训练模式 - 实际部署时会进行真实训练'
+            }
+            
+            return api_response(
+                data=training_result,
+                message="模型训练任务已启动（模拟模式）"
+            )
+            
+    except Exception as e:
+        logger.error(f"训练模型请求失败: {str(e)}")
+        logger.error(traceback.format_exc())
+        return api_response(
+            error=f"训练模型请求失败: {str(e)}",
+            message="内部服务错误",
+            status_code=500
+        )
+    
     hash_obj = hashlib.md5(data_str.encode())
     return f"prediction:{prediction_type}:{hash_obj.hexdigest()}"

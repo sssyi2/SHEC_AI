@@ -11,6 +11,8 @@ Version: v2.0
 import os
 import sys
 from flask import Flask, jsonify, request
+import tracemalloc
+import atexit
 from flask_cors import CORS
 from datetime import datetime
 import logging
@@ -22,6 +24,9 @@ from utils.redis_client import init_redis
 def create_app(config_name=None):
     """创建Flask应用工厂函数"""
     
+    # 启动tracemalloc内存追踪
+    tracemalloc.start()
+
     # 创建Flask应用实例
     app = Flask(__name__)
     
@@ -39,7 +44,7 @@ def create_app(config_name=None):
     # 启用CORS
     CORS(app, resources={
         r"/api/*": {
-            "origins": ["http://localhost:3000", "http://127.0.0.1:3000"],
+            "origins": ["http://localhost:5173", "http://127.0.0.1:5173"],
             "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
             "allow_headers": ["Content-Type", "Authorization"]
         }
@@ -59,6 +64,37 @@ def create_app(config_name=None):
     except Exception as e:
         app.logger.error(f"Redis连接初始化失败: {str(e)}")
     
+    # 初始化监控系统 (Sprint 4.2)
+    monitoring_system = None
+    try:
+        from monitoring import init_monitoring_system, MONITORING_CONFIG_EXAMPLE
+        from monitoring.routes import register_monitoring_routes
+        
+        # 监控配置
+        monitoring_config = {
+            'enable_system_monitoring': True,
+            'dashboard_dir': 'monitoring/dashboards',
+            'alert_check_interval': 30,
+            # 如需邮件/Webhook告警，请配置相应参数
+        }
+        
+        monitoring_system = init_monitoring_system(app, monitoring_config)
+        
+        # 注册监控路由
+        metrics_collector = getattr(monitoring_system, 'metrics_collector', None) if monitoring_system else None
+        register_monitoring_routes(app, metrics_collector)
+        
+        app.logger.info("监控系统初始化成功 (Sprint 4.2)")
+    except Exception as e:
+        app.logger.error(f"监控系统初始化失败: {str(e)}")
+        # 即使监控系统失败，也要注册基础路由
+        try:
+            from monitoring.routes import register_monitoring_routes
+            register_monitoring_routes(app, None)
+            app.logger.info("监控路由注册成功（降级模式）")
+        except Exception as route_error:
+            app.logger.error(f"监控路由注册失败: {str(route_error)}")
+    
     # 注册蓝图
     register_blueprints(app)
     
@@ -69,6 +105,9 @@ def create_app(config_name=None):
     register_hooks(app)
     
     return app
+
+
+
 
 def register_blueprints(app):
     """注册蓝图 - 兼容版本"""
@@ -103,6 +142,14 @@ def register_blueprints(app):
         app.logger.info("预测服务蓝图注册成功 (兼容模式)")
     except ImportError as e:
         app.logger.error(f"预测服务蓝图导入失败: {str(e)}")
+    
+    # 注册完整的预测API蓝图
+    try:
+        from api.predict import predict_bp as predict_full_bp
+        app.register_blueprint(predict_full_bp)
+        app.logger.info("完整预测服务蓝图注册成功")
+    except ImportError as e:
+        app.logger.error(f"完整预测服务蓝图导入失败: {str(e)}")
     
     try:
         from api.models import models_bp

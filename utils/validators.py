@@ -685,5 +685,14 @@ def validate_batch_prediction_input(data: Dict[str, Any]) -> Dict[str, Any]:
         logger.error(f"批量预测输入数据验证异常: {str(e)}")
         return {'valid': False, 'errors': str(e)}
 
+def validate_json_request(request):
+    """验证JSON请求数据"""
+    try:
+        if not request.is_json:
+            return None
+        return request.get_json()
+    except Exception:
+        return None
+
 if __name__ == "__main__":
     example_usage()

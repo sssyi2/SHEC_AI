@@ -208,17 +208,14 @@ class ModelTrainer:
                 # 默认查询：获取健康指标数据
                 default_query = """
                 SELECT 
-                    hm.*,
-                    p.age,
-                    p.gender,
+                    hm.*
                     -- 计算目标变量：基于多个指标的健康风险评分
                     CASE 
                         WHEN (hm.systolic_pressure > 140 OR hm.diastolic_pressure > 90) THEN 2
                         WHEN (hm.systolic_pressure > 130 OR hm.diastolic_pressure > 80) THEN 1
                         ELSE 0
                     END as health_risk_level
-                FROM health_metrics hm
-                JOIN patients p ON hm.patient_id = p.patient_id
+                FROM patient_health_metrics hm
                 WHERE hm.systolic_pressure IS NOT NULL 
                   AND hm.diastolic_pressure IS NOT NULL
                 """
@@ -248,7 +245,7 @@ class ModelTrainer:
                 # 默认特征选择
                 feature_columns = [
                     'age', 'systolic_pressure', 'diastolic_pressure', 
-                    'blood_sugar', 'bmi', 'heart_rate'
+                    'blood_sugar', 'bmi'
                 ]
                 available_features = [col for col in feature_columns if col in processed_data['features'].columns]
                 feature_data = processed_data['features'][available_features]
